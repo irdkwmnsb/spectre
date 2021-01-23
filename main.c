@@ -33,7 +33,8 @@ int main(int argc, char *argv[]) {
   }
   free(read);
   if (from_file) {
-    if (!fclose(output)) {
+    fclose(output);
+    if (errno) {
       perror("Could not close file");
     }
   }
