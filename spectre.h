@@ -21,6 +21,7 @@
 #define BRANCH_TRAINS 16
 #define PAGE_SIZE 4096
 #define CUTOFF_TIME 500
+#define CACHE_HIT_COEFF 3
 
 FILE *output = NULL;
 
@@ -59,7 +60,7 @@ uint8_t read_at(uint64_t addr) {
 
       if (t_iter > MIN_ITERATIONS) {
         register uint64_t average = (c_sum - c_i_sum[i]) / (c_cnt - c_i_cnt[i]);
-        if (time < average >> 2) {// 4 times faster than else's average - that's a cache hit.
+        if (CACHE_HIT_COEFF * time < average) {// faster than else's average - that's a cache hit.
           if (output != NULL) {
             fprintf(output,
                     "%p = %c - page takes %ld cycles to read (average = %lu) (took %lu iterations, %lu reads and %lu cycles)\n",
