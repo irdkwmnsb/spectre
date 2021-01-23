@@ -10,3 +10,4 @@ IF (CMAKE_COMPILER_IS_GNUCC)
 ENDIF (CMAKE_COMPILER_IS_GNUCC)
 
 add_executable(hw6 main.c spectre.h)
+add_executable(test test.c spectre.h)

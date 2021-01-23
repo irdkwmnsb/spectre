@@ -4,21 +4,27 @@
 
 #include "spectre.h"
 
-int main() {
-  //char *secret =
+int main(int argc, char *argv[]) {
+  if (argc > 1) {
+    fprintf(stderr, "%s ignores arguments\n", argv[0]);
+  }
+//char *secret =
 //    "Привет мир! Эту память читают напрямую!";
   char *secret =
       "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 //char *secret =
 //    "MyPasswordMyPasswordMyPasswordMyPasswordMyPasswordMyPasswordMyPasswordMyPasswordMyPasswordMyPassword";
 //  usleep(500);
-output = stderr;
+  output = stderr;
   uint32_t correct = 0;
   uint32_t incorrect = 0;
   uint32_t repeat = 20;
   size_t size = strlen(secret);
   uint8_t byte;
   uint64_t addr = (uint64_t) secret;
+  init_spectre();
+  printf("Reading...\n");
+  fflush(stdout);
   for (int i = 0; i < repeat; i++) {
     uint32_t read = 0;
     do {

@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include <inttypes.h>
 #include "spectre.h"
 
 int main(int argc, char *argv[]) {
@@ -24,8 +25,12 @@ int main(int argc, char *argv[]) {
   } else {
     output = stdout;
   }
-  uint8_t *read = read_byte_string_at((uint64_t) data);
+  init_spectre();
+  char *read = read_byte_string_at((uint64_t) data);
   fprintf(output, "Read: %s\n", read);
+  if(strlen(read) != strlen(data)) {
+    fprintf(output, "Lengths mismatch! Attack failed!\n");
+  }
   free(read);
   if (from_file) {
     if (!fclose(output)) {
